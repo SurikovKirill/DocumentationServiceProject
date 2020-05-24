@@ -26,4 +26,11 @@ class TreeSerializer(serializers.ModelSerializer):
 class ComponentSerializer(serializers.ModelSerializer):
     class Meta:
         model = Specification
-        fields = ('id', 'name', 'operating_hours', 'first_date', 'link_to_spec', 'additional_fields', 'parent')
+        fields = ('name', 'operating_hours', 'first_date', 'link_to_spec', 'additional_fields', 'parent')
+
+# class NodeSerializer(serializers.Serializer):
+
+class ObjectDescendants(serializers.ModelSerializer):
+    class Meta:
+        model = Specification
+        fields = ('id', 'name')
