@@ -1,4 +1,6 @@
 from django.db import models
+from django.contrib.postgres.fields import JSONField
+from mptt.models import MPTTModel, TreeForeignKey
 
 
 class TaskserviceLog(models.Model):
@@ -6,10 +8,10 @@ class TaskserviceLog(models.Model):
     ending_date = models.DateField()
     task_type = models.CharField(max_length=255)
     description = models.TextField()
-    report = models.CharField(max_length=100)
-    link_to_object = models.CharField(max_length=100)
-    link_to_component = models.CharField(max_length=100)
-    user = models.TextField()  # This field type is a guess.
+    report = models.CharField(max_length=255)
+    user = models.TextField(blank=True, null=True)  # This field type is a guess.
+    components = models.TextField(blank=True, null=True)  # This field type is a guess.
+    object_data = models.TextField(blank=True, null=True)  # This field type is a guess.
 
     class Meta:
         managed = False
@@ -17,27 +19,27 @@ class TaskserviceLog(models.Model):
 
 
 class TaskserviceTask(models.Model):
-    creation_date = models.DateField()
-    ending_date = models.DateField()
+    creation_date = models.DateField(blank=True, null=True)
+    ending_date = models.DateField(blank=True, null=True)
     status = models.CharField(max_length=255)
     task_type = models.CharField(max_length=255)
     description = models.TextField()
-    report = models.CharField(max_length=100)
-    link_to_object = models.CharField(max_length=100)
-    link_to_component = models.CharField(max_length=100)
+    report = models.CharField(max_length=255, blank=True, null=True)
+    components = models.TextField(blank=True, null=True)  # This field type is a guess.
+    object_data = models.TextField(blank=True, null=True)  # This field type is a guess.
 
     class Meta:
         managed = False
         db_table = 'TaskService_task'
 
 
-class TaskserviceTaskWorkers(models.Model):
+class TaskserviceTaskWorker(models.Model):
     task = models.ForeignKey(TaskserviceTask, models.DO_NOTHING)
     user = models.ForeignKey('AuthUser', models.DO_NOTHING)
 
     class Meta:
         managed = False
-        db_table = 'TaskService_task_workers'
+        db_table = 'TaskService_task_worker'
         unique_together = (('task', 'user'),)
 
 
@@ -150,3 +152,11 @@ class DjangoSession(models.Model):
         managed = False
         db_table = 'django_session'
 
+
+class Specification(MPTTModel):
+    name = models.CharField(max_length=255)
+    operating_hours = models.IntegerField(null=True)
+    first_date = models.DateField(null=True)
+    link_to_spec = models.FilePathField(null=True, blank=True, max_length=255)
+    additional_fields = JSONField(null=True)
+    parent = TreeForeignKey('self', on_delete=models.CASCADE, null=True, blank=True, related_name='children', db_index=True)
