@@ -157,6 +157,6 @@ class Specification(MPTTModel):
     name = models.CharField(max_length=255)
     operating_hours = models.IntegerField(null=True)
     first_date = models.DateField(null=True)
-    link_to_spec = models.FilePathField(null=True, blank=True, max_length=255)
+    link_to_spec = models.CharField(null=True, blank=True, max_length=255)
     additional_fields = JSONField(null=True)
     parent = TreeForeignKey('self', on_delete=models.CASCADE, null=True, blank=True, related_name='children', db_index=True)
