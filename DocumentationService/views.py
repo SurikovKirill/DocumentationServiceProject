@@ -17,9 +17,21 @@ import datetime
 
 
 def create_scheduled_task(data):
+    # id компонента
+    # название компонента
+    # id объекта
+    # название объекта
+    # first_date
+    # creation_date
+    # status
+    # task_type
+    # description "Плановое техобслуживание для component.name"
     pass
 
+
 def delete_scheduled_task(data):
+    # id компонента/id объекта
+    # descendants id:[]
     pass
 
 # если пришел запрос на удаление объекта или компонента, то
@@ -117,8 +129,10 @@ class ComponentAPI(APIView):
         parent = Specification.objects.get(id=id)
         Specification.objects.insert_node(node=node, target=parent, position='first-child', save=True)
         node = Specification.objects.get(id=id).get_children().get(name=name)
+        #//////////////////////////////////////////////
         if operating_hours is not None:
-            print("add new scheduled task")
+            print("create_scheduled_task")
+        #//////////////////////////////////////////////
         serializer = ComponentSerializer(node)
         return Response(serializer.data, status=status.HTTP_200_OK)
 
@@ -130,21 +144,35 @@ class ComponentAPI(APIView):
             id = request.data['id']
         except:
             return Response(status=status.HTTP_400_BAD_REQUEST)
+        try:
+            operating_hours = int(request.data['operating_hours'])
+            first_date = datetime.datetime.strptime(request.data['first_date'], '%Y%m%d').date()
+        except:
+            operating_hours = None
+            first_date = None
+        try:
+            additional_fields = json.loads(request.data['additional_fields'])
+        except:
+            additional_fields = None
 
         upd_node = Specification.objects.get(id=id)
-        if request.data['first_date'] == '':
-            f_date = None
-        else:
-            f_date = request.data['first_date']
-        if request.data['operating_hours'] == '':
-            op_hours = None
-        else:
-            op_hours = int(request.data['operating_hours'])
-
-        upd_node.name = request.data['name']
-        upd_node.operating_hours = op_hours
-        upd_node.first_date = f_date
-        upd_node.additional_fields = request.data['additional_fields']
+        try:
+            file = request.FILES['file']
+            timestamp = str(int(time.time()))
+            filename = timestamp + '_' + file.name
+            default_storage.save(name=filename, content=file)
+        except:
+            default_storage.delete(upd_node.link_to_spec)
+            filename = None
+        upd_node.name = name
+        if (upd_node.operating_hours is not None) and (operating_hours is None):
+            print("delete_scheduled_task")
+        if (upd_node.operating_hours is None) and (operating_hours is not None):
+            print("create_scheduled_task")
+        upd_node.operating_hours = operating_hours
+        upd_node.first_date = first_date
+        upd_node.additional_fields = additional_fields
+        upd_node.link_to_spec = filename
         upd_node.save()
         return Response(status=status.HTTP_200_OK)
 
@@ -156,6 +184,7 @@ class ComponentAPI(APIView):
         except:
             return Response(status=status.HTTP_400_BAD_REQUEST)
         Specification.objects.get(id=id).delete()
+        print("delete_scheduled_task")
         Specification.objects.rebuild()
         return Response(status=status.HTTP_204_NO_CONTENT)
 
