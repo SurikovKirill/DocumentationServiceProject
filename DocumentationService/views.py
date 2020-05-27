@@ -35,12 +35,14 @@ def create_scheduled_task(component, object_data, first_date, name):
 
 
 def delete_scheduled_tasks(id, descendants):
+    print('sos_comp')
     req = requests.delete('http://127.0.0.1:8000/api/tasks/manager',
                           data={'id': id, 'descendants': descendants})
     req.raise_for_status()
 
 
 def delete_scheduled_tasks_for_object(id, descendants):
+    print('sos_obj')
     req = requests.delete('http://127.0.0.1:8000/api/tasks/manager',
                           data={'id': id, 'descendants': descendants})
     req.raise_for_status()
@@ -67,8 +69,15 @@ class ObjectAPI(APIView):
             id = request.data['id']
         except:
             return Response(status=status.HTTP_400_BAD_REQUEST)
-
-        Specification.objects.get(id=id).delete()
+        try:
+            node = Specification.objects.get(id=id)
+        except:
+            return Response(status=status.HTTP_404_NOT_FOUND)
+        if node.operating_hours is not None:
+            descendants = node.get_descendants()
+            descendants_serializer = ObjectDescendants(descendants, many=True)
+            delete_scheduled_tasks_for_object(id, descendants_serializer)
+        node.delete()
         Specification.objects.rebuild()
         return Response(status=status.HTTP_204_NO_CONTENT)
 
@@ -110,7 +119,7 @@ class ObjectAPIGetDescendants(APIView):
 class ComponentAPI(APIView):
 
     # TODO при создании компонента с полями operating_hours и first_data
-    #  отправлять запрос на сервис задач для добавления плановой задачи
+    #  отправлять запрос на сервис задач для добавления плановой задачи, протестировать
     # Создание компонента
     def post(self, request):
         try:
@@ -141,10 +150,10 @@ class ComponentAPI(APIView):
         parent = Specification.objects.get(id=id)
         Specification.objects.insert_node(node=node, target=parent, position='first-child', save=True)
         node = Specification.objects.get(id=id).get_children().get(name=name)
-        # //////////////////////////////////////////////
+        root = node.get_root()
         if operating_hours is not None:
-            print("create_scheduled_task")
-        # //////////////////////////////////////////////
+            create_scheduled_task({'id': node.id, 'name': node.name}, {'id': root.id, 'name': root.name},
+                                  node.first_date, node.name)
         serializer = ComponentSerializer(node)
         return Response(serializer.data, status=status.HTTP_200_OK)
 
@@ -178,9 +187,14 @@ class ComponentAPI(APIView):
             filename = upd_node.link_to_spec
         upd_node.name = name
         if (upd_node.operating_hours is not None) and (operating_hours is None):
-            print("delete_scheduled_task")
+            descendants = upd_node.get_descendants()
+            descendants_serializer = ObjectDescendants(descendants, many=True)
+            delete_scheduled_tasks(id, descendants_serializer)
+            delete_scheduled_tasks(id, descendants_serializer)
         if (upd_node.operating_hours is None) and (operating_hours is not None):
-            print("create_scheduled_task")
+            root = upd_node.get_root()
+            create_scheduled_task({'id': upd_node.id, 'name': upd_node.name}, {'id': root.id, 'name': root.name},
+                                  upd_node.first_date, upd_node.name)
         upd_node.operating_hours = operating_hours
         upd_node.first_date = first_date
         upd_node.additional_fields = additional_fields
@@ -189,14 +203,21 @@ class ComponentAPI(APIView):
         return Response(status=status.HTTP_200_OK)
 
     # Удаление компонента
-    # TODO удаление задач в сервисе задач
+    # TODO протестировать удаление задач в сервисе задач
     def delete(self, request):
         try:
             id = request.data['id']
         except:
             return Response(status=status.HTTP_400_BAD_REQUEST)
-        Specification.objects.get(id=id).delete()
-        print("delete_scheduled_task")
+        try:
+            node = Specification.objects.get(id=id)
+        except:
+            return Response(status=status.HTTP_404_NOT_FOUND)
+        if node.operating_hours is not None:
+            descendants = node.get_descendants()
+            descendants_serializer = ObjectDescendants(descendants, many=True)
+            delete_scheduled_tasks(id, descendants_serializer)
+        node.delete()
         Specification.objects.rebuild()
         return Response(status=status.HTTP_204_NO_CONTENT)
 
