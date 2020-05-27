@@ -14,9 +14,15 @@ from rest_framework.parsers import JSONParser, FileUploadParser, MultiPartParser
 import json
 import time
 import datetime
+import requests
 
 
-def create_scheduled_task(data):
+def create_scheduled_task(component, object_data, first_date, name):
+    req = requests.post('http://127.0.0.1:8000/api/tasks/manager',
+                        data={'component': component, 'object_data': object_data,
+                              'creation_date': first_date, 'status': 'PLANNED', 'task_type': 'SCHEDULED',
+                              'description': 'Плановое техобслуживание для {0}'.format(name)})
+    req.raise_for_status()
     # id компонента
     # название компонента
     # id объекта
@@ -25,14 +31,20 @@ def create_scheduled_task(data):
     # creation_date
     # status
     # task_type
-    # description "Плановое техобслуживание для component.name"
-    pass
+    # description ""
 
 
-def delete_scheduled_task(data):
-    # id компонента/id объекта
-    # descendants id:[]
-    pass
+def delete_scheduled_tasks(id, descendants):
+    req = requests.delete('http://127.0.0.1:8000/api/tasks/manager',
+                          data={'id': id, 'descendants': descendants})
+    req.raise_for_status()
+
+
+def delete_scheduled_tasks_for_object(id, descendants):
+    req = requests.delete('http://127.0.0.1:8000/api/tasks/manager',
+                          data={'id': id, 'descendants': descendants})
+    req.raise_for_status()
+
 
 # если пришел запрос на удаление объекта или компонента, то
 # 1 находим всех descendants
@@ -129,10 +141,10 @@ class ComponentAPI(APIView):
         parent = Specification.objects.get(id=id)
         Specification.objects.insert_node(node=node, target=parent, position='first-child', save=True)
         node = Specification.objects.get(id=id).get_children().get(name=name)
-        #//////////////////////////////////////////////
+        # //////////////////////////////////////////////
         if operating_hours is not None:
             print("create_scheduled_task")
-        #//////////////////////////////////////////////
+        # //////////////////////////////////////////////
         serializer = ComponentSerializer(node)
         return Response(serializer.data, status=status.HTTP_200_OK)
 
@@ -161,9 +173,9 @@ class ComponentAPI(APIView):
             timestamp = str(int(time.time()))
             filename = timestamp + '_' + file.name
             default_storage.save(name=filename, content=file)
-        except:
             default_storage.delete(upd_node.link_to_spec)
-            filename = None
+        except:
+            filename = upd_node.link_to_spec
         upd_node.name = name
         if (upd_node.operating_hours is not None) and (operating_hours is None):
             print("delete_scheduled_task")
