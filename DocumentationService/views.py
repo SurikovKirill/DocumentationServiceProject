@@ -1,11 +1,10 @@
 from django.shortcuts import render
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny
-from DocumentationService.serializers import RootSerializer, ComponentSerializer, TreeSerializer, ObjectDescendants, \
-    MySerializer, RootsSerializer
+from DocumentationService.serializers import RootSerializer, ComponentSerializer, ObjectDescendants
 from rest_framework.views import APIView
 from rest_framework.response import Response
-from rest_framework import status, viewsets, permissions
+from rest_framework import status
 from .models import Specification
 from rest_framework.renderers import JSONRenderer
 from django.core import serializers
@@ -20,8 +19,15 @@ import datetime
 def create_scheduled_task(data):
     pass
 
+def delete_scheduled_task(data):
+    pass
 
-# view для работы с Объектами
+# если пришел запрос на удаление объекта или компонента, то
+# 1 находим всех descendants
+# 2 отправляем запрос на удаление плановых задач на сервис задач, в теле указываем id всех descendants, включая родителя
+# 3 на сервисе задач удаляем все плановые задачи, имеющие в себе id компонента и id объекта
+
+
 class ObjectAPI(APIView):
 
     # Все объекты
@@ -30,9 +36,15 @@ class ObjectAPI(APIView):
         serializer = RootSerializer(roots, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
 
+    # TODO при удалении объекта удалить все плановые задачи для его компонентов
     # Удаление объекта
     def delete(self, request):
-        Specification.objects.get(id=request.data['id']).delete()
+        try:
+            id = request.data['id']
+        except:
+            return Response(status=status.HTTP_400_BAD_REQUEST)
+
+        Specification.objects.get(id=id).delete()
         Specification.objects.rebuild()
         return Response(status=status.HTTP_204_NO_CONTENT)
 
@@ -51,61 +63,75 @@ class ObjectAPIUpdate(generics.UpdateAPIView):
     serializer_class = RootSerializer
 
 
-# view для работы только с одним объектом (получение данных по id, обновление данных по id)
 class ObjectAPIGetChild(APIView):
-    # TODO удостовериться в правильности вывода детей
     # Получение данных по id и вывод детей
     def get(self, request, pk):
         nodes = Specification.objects.get(id=pk).get_children()
-        # serializer = serializers.serialize('json', nodes)
-        # return Response(serializer)
         serializer = ComponentSerializer(nodes, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
 
 
-# Вывод всех Компонентов Объекта
 class ObjectAPIGetDescendants(APIView):
-
+    # Вывод всех компонентов, из которых состоит объект
     def get(self, request):
-        # nodes = Specification.objects.get_queryset_descendants(Specification.objects.get(id=request.data['id']))
-        nodes = Specification.objects.get(id=request.data['id']).get_descendants()
+        try:
+            id = request.data['id']
+        except:
+            return Response(status=status.HTTP_400_BAD_REQUEST)
+        nodes = Specification.objects.get(id=id).get_descendants()
         serializer = ObjectDescendants(nodes, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
 
 
 class ComponentAPI(APIView):
 
+    # TODO при создании компонента с полями operating_hours и first_data
+    #  отправлять запрос на сервис задач для добавления плановой задачи
     # Создание компонента
-    # TODO настроить валидацию
     def post(self, request):
+        try:
+            name = request.data['name']
+            id = request.data['id']
+        except:
+            return Response(status=status.HTTP_400_BAD_REQUEST)
         try:
             file = request.FILES['file']
             timestamp = str(int(time.time()))
-            name = timestamp + '_' + file.name
-            default_storage.save(name=name, content=file)
+            filename = timestamp + '_' + file.name
+            default_storage.save(name=filename, content=file)
         except:
-            name = ''
-        if request.data['operating_hours'] == '':
-            op_hours = None
-        else:
-            op_hours = int(request.data['operating_hours'])
-            if request.data['first_date'] == '':
-                f_date = None
-            else:
-                f_date = datetime.datetime.strptime(request.data['first_date'], '%Y%m%d').date()
+            filename = None
+        try:
+            operating_hours = int(request.data['operating_hours'])
+            first_date = datetime.datetime.strptime(request.data['first_date'], '%Y%m%d').date()
+        except:
+            operating_hours = None
+            first_date = None
+        try:
+            additional_fields = json.loads(request.data['additional_fields'])
+        except:
+            additional_fields = None
 
-        node = Specification(name=request.data['name'], operating_hours=op_hours, first_date=f_date,
-                             additional_fields=request.data['additional_fields'], link_to_spec=name)
-        parent = Specification.objects.get(id=request.data['id'])
+        node = Specification(name=name, operating_hours=operating_hours, first_date=first_date,
+                             additional_fields=additional_fields, link_to_spec=filename)
+        parent = Specification.objects.get(id=id)
         Specification.objects.insert_node(node=node, target=parent, position='first-child', save=True)
-        node = Specification.objects.get(id=request.data['id']).get_children().get(name=request.data['name'])
-        serializer = TreeSerializer(node)
+        node = Specification.objects.get(id=id).get_children().get(name=name)
+        if operating_hours is not None:
+            print("add new scheduled task")
+        serializer = ComponentSerializer(node)
         return Response(serializer.data, status=status.HTTP_200_OK)
 
     # Обновление Компонента по id
-    # TODO настроить валидацию, обновление файлов
+    # TODO настроить валидацию, обновление файлов, добавление/удаление задач в сервисе задач
     def put(self, request):
-        upd_node = Specification.objects.get(id=request.data['id'])
+        try:
+            name = request.data['name']
+            id = request.data['id']
+        except:
+            return Response(status=status.HTTP_400_BAD_REQUEST)
+
+        upd_node = Specification.objects.get(id=id)
         if request.data['first_date'] == '':
             f_date = None
         else:
@@ -123,8 +149,13 @@ class ComponentAPI(APIView):
         return Response(status=status.HTTP_200_OK)
 
     # Удаление компонента
+    # TODO удаление задач в сервисе задач
     def delete(self, request):
-        Specification.objects.get(id=request.data['id']).delete()
+        try:
+            id = request.data['id']
+        except:
+            return Response(status=status.HTTP_400_BAD_REQUEST)
+        Specification.objects.get(id=id).delete()
         Specification.objects.rebuild()
         return Response(status=status.HTTP_204_NO_CONTENT)
 
