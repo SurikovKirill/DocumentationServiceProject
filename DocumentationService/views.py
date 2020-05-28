@@ -18,9 +18,11 @@ import requests
 
 
 def create_scheduled_task(component, object_data, first_date, name):
-    req = requests.post('http://127.0.0.1:8000/api/tasks/manager',
-                        data={'component': component, 'object_data': object_data,
-                              'creation_date': first_date, 'status': 'PLANNED', 'task_type': 'SCHEDULED',
+    print(first_date)
+    req = requests.post('http://127.0.0.1:8000/api/tasks/scheduled',
+                        json={'components': {'id': int(component['id']), 'name': component['name']},
+                              'object_data': {'id': int(object_data['id']), 'name': object_data['name']},
+                              'creation_date': str(first_date), 'status': 'PLANNED', 'task_type': 'SCHEDULED',
                               'description': 'Плановое техобслуживание для {0}'.format(name)})
     req.raise_for_status()
     # id компонента
@@ -35,16 +37,14 @@ def create_scheduled_task(component, object_data, first_date, name):
 
 
 def delete_scheduled_tasks(id, descendants):
-    print('sos_comp')
-    req = requests.delete('http://127.0.0.1:8000/api/tasks/manager',
-                          data={'id': id, 'descendants': descendants})
+    req = requests.delete('http://127.0.0.1:8000/api/tasks/scheduled',
+                          json={'id': id, 'descendants': descendants})
     req.raise_for_status()
 
 
 def delete_scheduled_tasks_for_object(id, descendants):
-    print('sos_obj')
-    req = requests.delete('http://127.0.0.1:8000/api/tasks/manager',
-                          data={'id': id, 'descendants': descendants})
+    req = requests.delete('http://127.0.0.1:8000/api/tasks/scheduled/object',
+                          json={'id': id, 'descendants': descendants})
     req.raise_for_status()
 
 
@@ -73,10 +73,9 @@ class ObjectAPI(APIView):
             node = Specification.objects.get(id=id)
         except:
             return Response(status=status.HTTP_404_NOT_FOUND)
-        if node.operating_hours is not None:
-            descendants = node.get_descendants()
-            descendants_serializer = ObjectDescendants(descendants, many=True)
-            delete_scheduled_tasks_for_object(id, descendants_serializer)
+        descendants = node.get_descendants()
+        descendants_serializer = ObjectDescendants(descendants, many=True)
+        delete_scheduled_tasks_for_object(id, descendants_serializer.data)
         node.delete()
         Specification.objects.rebuild()
         return Response(status=status.HTTP_204_NO_CONTENT)
@@ -106,12 +105,8 @@ class ObjectAPIGetChild(APIView):
 
 class ObjectAPIGetDescendants(APIView):
     # Вывод всех компонентов, из которых состоит объект
-    def get(self, request):
-        try:
-            id = request.data['id']
-        except:
-            return Response(status=status.HTTP_400_BAD_REQUEST)
-        nodes = Specification.objects.get(id=id).get_descendants()
+    def get(self, request, pk):
+        nodes = Specification.objects.get(id=pk).get_descendants()
         serializer = ObjectDescendants(nodes, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
 
@@ -216,7 +211,7 @@ class ComponentAPI(APIView):
         if node.operating_hours is not None:
             descendants = node.get_descendants()
             descendants_serializer = ObjectDescendants(descendants, many=True)
-            delete_scheduled_tasks(id, descendants_serializer)
+            delete_scheduled_tasks(id, descendants_serializer.data)
         node.delete()
         Specification.objects.rebuild()
         return Response(status=status.HTTP_204_NO_CONTENT)
